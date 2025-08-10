@@ -11,3 +11,5 @@ venv/
 dist/
 build/
 *.log
+*./old-csv
+*./tests
