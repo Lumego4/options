@@ -1,0 +1,5 @@
+ticker,underlying_price,P/E,P/S,strike,premium_mid,Premium Ratio,delta,option_volume,Buffer Distance,Normalized Buffer Distance,impliedVolatility,custom-optimizer,EPS (TTM),last earnings date,Recommendation (buy/hold/sell),Rec. Fundamental,Rec. Technical,dividend_yield,Dividend ex date,dividend pay out date
+TSLA,329.65,196.2,11.47,320.0,3.67,1.15,0.256,30196,13.3,4.16,0.456,31.69,1.68,,hold,sell,sell,,,
+CVS,65.54,18.3,0.22,61.0,0.08,0.13,0.224,242,4.6,7.54,0.375,55.69,3.59,,buy,hold,hold,4.06,2025-07-22,2025-08-01
+GOOG,202.09,21.5,6.57,197.5,1.92,0.97,0.308,4888,6.5,3.29,0.375,34.07,9.38,,buy,hold,hold,0.42,2025-09-08,2025-09-15
+CRWV,129.55,0.0,23.03,118.0,9.43,7.99,0.305,126,21.0,17.8,2.296,47.4,-2.53,,hold,sell,sell,,,
