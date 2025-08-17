@@ -481,8 +481,8 @@ if st.session_state.get("results_df") is not None:
     requested_date_iso = ctx.get("requested_date_iso", "")
     scan_type = ctx.get("scan_type", "")
 
+    # 1) Results (sortable, read-only)
     st.subheader("Results")
-    # Sortable, interactive view (cells disabled so values aren't edited)
     st.data_editor(
         display_df,
         hide_index=True,
@@ -498,12 +498,14 @@ if st.session_state.get("results_df") is not None:
         data=csv_bytes,
         file_name=f"output-{requested_date_iso}-{scan_type}.csv",
         mime="text/csv",
-        type="primary"
+        type="primary",
+        key="download_results_btn",
     )
 
+    # 2) Results with checkboxes (selection for watchlist)
     st.divider()
-    st.subheader("Watchlist")
-    # Prepare data with stable row ids for selection persistence
+    st.subheader("Select rows to add to watchlist")
+
     def make_row_id(row: pd.Series) -> str:
         return "|".join([
             str(row.get("ticker", "")),
@@ -512,12 +514,71 @@ if st.session_state.get("results_df") is not None:
             requested_date_iso,
         ])
 
-    base_with_ids = display_df.copy()
-    base_with_ids["row_id"] = base_with_ids.apply(make_row_id, axis=1)
-    selected_ids = set(st.session_state.get("selected_row_ids", set()))
+    selectable = display_df.copy()
+    selectable["row_id"] = selectable.apply(make_row_id, axis=1)
+    # Use stable row_id as index so sorting won’t break selection
+    selectable = selectable.set_index("row_id", drop=False)
+    sel_ids = set(st.session_state.get("selected_row_ids", set()))
+    selectable.insert(0, "Select", selectable.index.map(lambda rid: rid in sel_ids))
 
+    edited = st.data_editor(
+        selectable.drop(columns=["row_id"]),
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Select": st.column_config.CheckboxColumn(help="Check rows to add to the active watchlist"),
+        },
+        disabled=[c for c in selectable.columns if c != "Select"],
+        key="watchlist_selector",
+    )
 
-        # --------------------------- Watchlist viewer ---------------------------
+    # Persist selection using editor index (row_id)
+    if isinstance(edited, pd.DataFrame) and "Select" in edited.columns:
+        new_selected = set(edited.index[edited["Select"] == True].tolist())
+        st.session_state["selected_row_ids"] = new_selected
+
+    # Save to watchlist controls
+    wl_dir = Path("watchlists"); wl_dir.mkdir(exist_ok=True)
+    wl_name_input = st.text_input(
+        "Watchlist name",
+        value=st.session_state.get("active_watchlist_name") or "my-watchlist",
+        key="wl_name_input",
+    )
+    add_btn = st.button("Add selected to watchlist", type="primary", key="add_selected_btn")
+    if add_btn:
+        wl_name_final = (wl_name_input or "").strip()
+        if not wl_name_final:
+            st.error("Please enter a watchlist name.")
+        else:
+            sel_ids = st.session_state.get("selected_row_ids", set())
+            if not sel_ids:
+                st.warning("No rows selected.")
+            else:
+                to_save = selectable.loc[list(sel_ids)].drop(columns=["Select", "row_id"]).reset_index(drop=True)
+                to_save = to_save.copy()
+                to_save["scan_type"] = scan_type
+                to_save["target_exp"] = requested_date_iso
+                wl_path = wl_dir / f"{wl_name_final}.csv"
+                try:
+                    if wl_path.exists():
+                        existing = pd.read_csv(wl_path)
+                    else:
+                        existing = pd.DataFrame(columns=list(to_save.columns))
+                except Exception:
+                    existing = pd.DataFrame(columns=list(to_save.columns))
+                combined = pd.concat([existing, to_save], ignore_index=True)
+                keys = [k for k in ["ticker", "strike", "scan_type", "target_exp"] if k in combined.columns]
+                if keys:
+                    combined = combined.drop_duplicates(subset=keys, keep="first")
+                try:
+                    combined.to_csv(wl_path, index=False)
+                    st.success(f"Added {len(to_save)} row(s) to watchlist '{wl_name_final}'.")
+                    if not st.session_state.get("active_watchlist_name"):
+                        st.session_state["active_watchlist_name"] = wl_name_final
+                except Exception as e:
+                    st.error(f"Failed to save watchlist: {e}")
+
+    # 3) Active watchlist (viewer)
     wl_name = st.session_state.get("active_watchlist_name")
     if st.session_state.get("show_watchlist") and wl_name:
         wl_path = Path("watchlists") / f"{wl_name}.csv"
@@ -526,75 +587,25 @@ if st.session_state.get("results_df") is not None:
         if wl_path.exists():
             try:
                 wl_df = pd.read_csv(wl_path)
-                st.data_editor(wl_df, hide_index=True, use_container_width=True, disabled=True, key="watchlist_view")
+                st.data_editor(
+                    wl_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    disabled=True,
+                    key="watchlist_view",
+                )
                 dl_bytes = wl_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     label=f"Download watchlist '{wl_name}'",
                     data=dl_bytes,
                     file_name=f"{wl_name}.csv",
                     mime="text/csv",
+                    key="download_watchlist_btn",
                 )
             except Exception as e:
                 st.error(f"Failed to load watchlist '{wl_name}': {e}")
         else:
             st.info("This watchlist is empty. Add rows from results to create it.")
-# Editor for selecting specific rows
-    editable = base_with_ids.copy()
-    editable.insert(0, "Select", editable["row_id"].apply(lambda rid: rid in selected_ids))
-    edited = st.data_editor(
-        editable.drop(columns=["row_id"]),
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "Select": st.column_config.CheckboxColumn(help="Check rows to add to watchlist"),
-        },
-        disabled=[c for c in editable.columns if c != "Select"],
-        key="watchlist_selector",
-    )
-
-    # Update persistent selection
-    try:
-        # Re-attach ids by position
-        edited_pos = edited.reset_index(drop=True)
-        ids_pos = base_with_ids["row_id"].reset_index(drop=True)
-        new_selected = set(ids_pos[edited_pos["Select"] == True].tolist()) if "Select" in edited_pos.columns else set()
-        st.session_state["selected_row_ids"] = new_selected
-    except Exception:
-        pass
-
-    # Watchlist name and save
-    wl_dir = Path("watchlists"); wl_dir.mkdir(exist_ok=True)
-    wl_name = st.text_input("Watchlist name", value="my-watchlist")
-    add_btn = st.button("Add selected to watchlist", type="primary")
-    if add_btn:
-        if not wl_name.strip():
-            st.error("Please enter a watchlist name.")
-        else:
-            mask = base_with_ids["row_id"].isin(st.session_state.get("selected_row_ids", set()))
-            sel = base_with_ids.loc[mask].drop(columns=["row_id"])
-            if sel.empty:
-                st.warning("No rows selected.")
-            else:
-                sel = sel.copy()
-                sel["scan_type"] = scan_type
-                sel["target_exp"] = requested_date_iso
-                wl_path = wl_dir / f"{wl_name}.csv"
-                try:
-                    if wl_path.exists():
-                        existing = pd.read_csv(wl_path)
-                    else:
-                        existing = pd.DataFrame(columns=list(sel.columns))
-                except Exception:
-                    existing = pd.DataFrame(columns=list(sel.columns))
-                combined = pd.concat([existing, sel], ignore_index=True)
-                keys = [k for k in ["ticker", "strike", "scan_type", "target_exp"] if k in combined.columns]
-                if keys:
-                    combined = combined.drop_duplicates(subset=keys, keep="first")
-                try:
-                    combined.to_csv(wl_path, index=False)
-                    st.success(f"Added {len(sel)} row(s) to watchlist '{wl_name}'.")
-                except Exception as e:
-                    st.error(f"Failed to save watchlist: {e}")
 
 
 # --------------------------- Footer ---------------------------
