@@ -427,12 +427,20 @@ if run_btn:
 
     display_df = df_full[view_cols]
 
-    # Display table
+    # Display table with ticker as clickable Finviz link, but keep CSV clean
     st.subheader("Results")
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    display_df_csv = display_df.copy()
+    render_df = display_df.copy()
+    try:
+        render_df["ticker"] = render_df["ticker"].apply(
+            lambda t: f'<a href="https://finviz.com/quote.ashx?t={t}&p=d" target="_blank">{t}</a>' if isinstance(t, str) and t else t
+        )
+    except Exception:
+        pass
+    st.markdown(render_df.to_html(escape=False, index=False), unsafe_allow_html=True)
 
     # Download
-    csv_bytes = display_df.to_csv(index=False).encode("utf-8")
+    csv_bytes = display_df_csv.to_csv(index=False).encode("utf-8")
     st.download_button(
         label=f"Download CSV (output-{requested_date_iso}-{scan_type}.csv)",
         data=csv_bytes,
