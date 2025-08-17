@@ -256,6 +256,14 @@ from metrics import compute_custom_optimizer
 st.title("📈 Options Scanner — Puts & Calls")
 st.caption("Free data via yfinance; quotes may be delayed.")
 
+# Session state for results and selections
+if "results_df" not in st.session_state:
+    st.session_state["results_df"] = None
+if "results_ctx" not in st.session_state:
+    st.session_state["results_ctx"] = {}
+if "selected_row_ids" not in st.session_state:
+    st.session_state["selected_row_ids"] = set()
+
 with st.sidebar:
     # Run control at top
     run_btn_top = st.button("Run Scan 🚀", type="primary", use_container_width=True, key="run_top")
@@ -331,6 +339,35 @@ with st.sidebar:
     # Run control at bottom
     run_btn_bottom = st.button("Run Scan 🚀", type="primary", use_container_width=True, key="run_bottom")
     run_btn = run_btn_top or run_btn_bottom
+
+    # Watchlist controls
+    st.divider()
+    st.subheader("Watchlist")
+    WATCHLIST_DIR = Path("watchlists")
+    try:
+        WATCHLIST_DIR.mkdir(exist_ok=True)
+    except Exception:
+        pass
+    try:
+        existing_watchlists = sorted([p.stem for p in WATCHLIST_DIR.glob("*.csv")])
+    except Exception:
+        existing_watchlists = []
+
+    wl_choice = st.selectbox(
+        "Active watchlist",
+        options=["— select —", "Create new…"] + existing_watchlists,
+        index=0,
+        key="wl_choice",
+    )
+    wl_name: Optional[str] = None
+    if wl_choice == "Create new…":
+        proposed = st.text_input("New watchlist name", placeholder="e.g., My-puts-Aug", key="wl_new_name")
+        if proposed:
+            wl_name = "".join(c if c.isalnum() or c in ("-", "_") else "-" for c in proposed).strip("-")
+    elif wl_choice != "— select —":
+        wl_name = wl_choice
+    st.session_state["active_watchlist_name"] = wl_name
+    st.checkbox("Show active watchlist below", value=False, key="show_watchlist")
 
 def parse_tickers_from_text(text: str) -> List[str]:
     toks: List[str] = []
@@ -427,20 +464,35 @@ if run_btn:
 
     display_df = df_full[view_cols]
 
-    # Display table with ticker as clickable Finviz link, but keep CSV clean
-    st.subheader("Results")
-    display_df_csv = display_df.copy()
-    render_df = display_df.copy()
-    try:
-        render_df["ticker"] = render_df["ticker"].apply(
-            lambda t: f'<a href="https://finviz.com/quote.ashx?t={t}&p=d" target="_blank">{t}</a>' if isinstance(t, str) and t else t
-        )
-    except Exception:
-        pass
-    st.markdown(render_df.to_html(escape=False, index=False), unsafe_allow_html=True)
+    # Persist results for reuse across reruns (sorting/selection)
+    st.session_state["results_df"] = display_df.copy()
+    st.session_state["results_ctx"] = {
+        "requested_date_iso": requested_date_iso,
+        "scan_type": scan_type,
+    }
+    st.session_state["results_csv_bytes"] = display_df.to_csv(index=False).encode("utf-8")
 
-    # Download
-    csv_bytes = display_df_csv.to_csv(index=False).encode("utf-8")
+    st.success("Done ✔️")
+
+# --------------------------- Results rendering + Watchlist ---------------------------
+if st.session_state.get("results_df") is not None:
+    display_df = st.session_state["results_df"].copy()
+    ctx = st.session_state.get("results_ctx", {})
+    requested_date_iso = ctx.get("requested_date_iso", "")
+    scan_type = ctx.get("scan_type", "")
+
+    st.subheader("Results")
+    # Sortable, interactive view (cells disabled so values aren't edited)
+    st.data_editor(
+        display_df,
+        hide_index=True,
+        use_container_width=True,
+        disabled=True,
+        key="results_table",
+    )
+
+    # Download latest results
+    csv_bytes = st.session_state.get("results_csv_bytes", display_df.to_csv(index=False).encode("utf-8"))
     st.download_button(
         label=f"Download CSV (output-{requested_date_iso}-{scan_type}.csv)",
         data=csv_bytes,
@@ -449,7 +501,100 @@ if run_btn:
         type="primary"
     )
 
-    st.success("Done ✔️")
+    st.divider()
+    st.subheader("Watchlist")
+    # Prepare data with stable row ids for selection persistence
+    def make_row_id(row: pd.Series) -> str:
+        return "|".join([
+            str(row.get("ticker", "")),
+            str(row.get("strike", "")),
+            scan_type,
+            requested_date_iso,
+        ])
+
+    base_with_ids = display_df.copy()
+    base_with_ids["row_id"] = base_with_ids.apply(make_row_id, axis=1)
+    selected_ids = set(st.session_state.get("selected_row_ids", set()))
+
+
+        # --------------------------- Watchlist viewer ---------------------------
+    wl_name = st.session_state.get("active_watchlist_name")
+    if st.session_state.get("show_watchlist") and wl_name:
+        wl_path = Path("watchlists") / f"{wl_name}.csv"
+        st.divider()
+        st.subheader(f"Active Watchlist — {wl_name}")
+        if wl_path.exists():
+            try:
+                wl_df = pd.read_csv(wl_path)
+                st.data_editor(wl_df, hide_index=True, use_container_width=True, disabled=True, key="watchlist_view")
+                dl_bytes = wl_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label=f"Download watchlist '{wl_name}'",
+                    data=dl_bytes,
+                    file_name=f"{wl_name}.csv",
+                    mime="text/csv",
+                )
+            except Exception as e:
+                st.error(f"Failed to load watchlist '{wl_name}': {e}")
+        else:
+            st.info("This watchlist is empty. Add rows from results to create it.")
+# Editor for selecting specific rows
+    editable = base_with_ids.copy()
+    editable.insert(0, "Select", editable["row_id"].apply(lambda rid: rid in selected_ids))
+    edited = st.data_editor(
+        editable.drop(columns=["row_id"]),
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Select": st.column_config.CheckboxColumn(help="Check rows to add to watchlist"),
+        },
+        disabled=[c for c in editable.columns if c != "Select"],
+        key="watchlist_selector",
+    )
+
+    # Update persistent selection
+    try:
+        # Re-attach ids by position
+        edited_pos = edited.reset_index(drop=True)
+        ids_pos = base_with_ids["row_id"].reset_index(drop=True)
+        new_selected = set(ids_pos[edited_pos["Select"] == True].tolist()) if "Select" in edited_pos.columns else set()
+        st.session_state["selected_row_ids"] = new_selected
+    except Exception:
+        pass
+
+    # Watchlist name and save
+    wl_dir = Path("watchlists"); wl_dir.mkdir(exist_ok=True)
+    wl_name = st.text_input("Watchlist name", value="my-watchlist")
+    add_btn = st.button("Add selected to watchlist", type="primary")
+    if add_btn:
+        if not wl_name.strip():
+            st.error("Please enter a watchlist name.")
+        else:
+            mask = base_with_ids["row_id"].isin(st.session_state.get("selected_row_ids", set()))
+            sel = base_with_ids.loc[mask].drop(columns=["row_id"])
+            if sel.empty:
+                st.warning("No rows selected.")
+            else:
+                sel = sel.copy()
+                sel["scan_type"] = scan_type
+                sel["target_exp"] = requested_date_iso
+                wl_path = wl_dir / f"{wl_name}.csv"
+                try:
+                    if wl_path.exists():
+                        existing = pd.read_csv(wl_path)
+                    else:
+                        existing = pd.DataFrame(columns=list(sel.columns))
+                except Exception:
+                    existing = pd.DataFrame(columns=list(sel.columns))
+                combined = pd.concat([existing, sel], ignore_index=True)
+                keys = [k for k in ["ticker", "strike", "scan_type", "target_exp"] if k in combined.columns]
+                if keys:
+                    combined = combined.drop_duplicates(subset=keys, keep="first")
+                try:
+                    combined.to_csv(wl_path, index=False)
+                    st.success(f"Added {len(sel)} row(s) to watchlist '{wl_name}'.")
+                except Exception as e:
+                    st.error(f"Failed to save watchlist: {e}")
 
 
 # --------------------------- Footer ---------------------------

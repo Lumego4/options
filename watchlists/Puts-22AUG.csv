@@ -1,0 +1,4 @@
+ticker,market_cap,underlying_price,P/E,P/S,strike,premium_mid,Premium Ratio,delta,option_volume,Buffer Distance,Normalized Buffer Distance,impliedVolatility,custom-optimizer,EPS (TTM),last earnings date,Recommendation (buy/hold/sell),Rec. Fundamental,Rec. Technical,dividend_yield,Dividend ex date,dividend pay out date,scan_type,target_exp
+ELF,$6.60B,116.37,68.9,4.92,113.0,2.16,1.91,0.31,58,5.5,4.87,0.613,42.43,1.69,,strong_buy,sell,hold,,,,puts,2025-08-22
+RKLB,$21.36B,44.27,0.0,42.35,42.5,0.98,2.32,0.292,211,2.8,6.59,0.779,34.89,-0.46,,buy,sell,buy,,,,puts,2025-08-22
+CRWV,$48.84B,99.97,0.0,13.85,90.0,2.1,2.33,0.181,6814,12.1,13.44,1.189,32.7,-2.32,,hold,sell,sell,,,,puts,2025-08-22
