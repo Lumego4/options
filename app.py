@@ -451,7 +451,6 @@ if run_btn:
 
     st.success("Done ✔️")
 
-
 # --------------------------- Footer ---------------------------
 
 st.caption("Not investment advice. Data from Yahoo via yfinance; may be delayed / incomplete.")
