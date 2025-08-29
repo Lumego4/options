@@ -39,14 +39,7 @@ st.set_page_config(
 )
 
 # Configurable Earnings Hub URL template (override via st.secrets if desired)
-EARNINGS_HUB_URL_TMPL = None
-try:
-    EARNINGS_HUB_URL_TMPL = st.secrets.get(
-        "EARNINGS_HUB_URL_TMPL",
-        "https://www.earningswhispers.com/stocks/{ticker}",
-    )
-except Exception:
-    EARNINGS_HUB_URL_TMPL = "https://earningshub.com/quote/TSLA{ticker}"
+EARNINGS_HUB_URL_TMPL = "https://www.earningshub.com/symbol/{ticker}"
 
 
 # --------------------------- Math / Greeks ---------------------------
@@ -235,27 +228,27 @@ def build_row(ticker: str,
 
     return {
         "ticker": ticker,
-        "market_cap": market_cap,
-        "underlying_price": round(S, 2) if S is not None else None,
+        "Market Cap": market_cap,
+        "Price": round(S, 2) if S is not None else None,
         "P/E": pe_val,
         "P/S": ps_val,
-        "strike": round(strike, 2) if strike is not None else None,
-        "premium_mid": premium_mid,
+        "Strike": round(strike, 2) if strike is not None else None,
+        "Premium Mid": premium_mid,
         "Premium Ratio": premium_ratio_pct,
-        "delta": delta_pos,
-        "option_volume": opt_vol,
-        "Buffer Distance": buffer_distance,
-        "Normalized Buffer Distance": normalized_buffer_pct,
-        "impliedVolatility": iv_round,
-        "custom-optimizer": custom_opt,
+        "Delta": delta_pos,
+        "Option V.": opt_vol,
+        "Buffer D.": buffer_distance,
+        # "Normalized Buffer Distance": normalized_buffer_pct,
+        "IV": iv_round,
+        # "custom-optimizer": custom_opt,
         "EPS (TTM)": eps_ttm,
-        "last earnings date": last_earn,
-        "Recommendation (buy/hold/sell)": (str(analyst_key) if analyst_key else None),
+        # "last earnings date": last_earn,
+        "Analyst Rec.": (str(analyst_key) if analyst_key else None),
         "Rec. Fundamental": rec_fund,
         "Rec. Technical": rec_tech,
-        "dividend_yield": round(div_yield, 4) if div_yield is not None else None,
-        "Dividend ex date": ex_div,
-        "dividend pay out date": pay_div,
+        # "dividend_yield": round(div_yield, 4) if div_yield is not None else None,
+        # "Dividend ex date": ex_div,
+        # "dividend pay out date": pay_div,
     }
 
 from metrics import compute_custom_optimizer
@@ -455,27 +448,19 @@ if run_btn:
 
     df_full = pd.DataFrame(rows)
 
-    # View-specific columns
+    # View-specific columns using new, consistent labels
     base_cols = [
-        "ticker", "market_cap", "underlying_price", "P/E", "P/S",
-        "strike", "premium_mid", "Premium Ratio", "delta", "option_volume",
-        "Buffer Distance", "Normalized Buffer Distance", "impliedVolatility",
-        "custom-optimizer", "EPS (TTM)", "last earnings date",
-        "Recommendation (buy/hold/sell)", "Rec. Fundamental", "Rec. Technical",
+        "ticker", "Market Cap", "Price", "P/E", "P/S",
+        "Strike", "Premium Mid", "Premium Ratio", "Delta", "Option V.",
+        "Buffer D.", "IV", "EPS (TTM)", "Analyst Rec.", "Rec. Fundamental", "Rec. Technical",
     ]
-    div_cols = ["dividend_yield", "Dividend ex date", "dividend pay out date"]
+    # Keep dividend-related columns only if present (Big Dave view)
+    div_cols = ["Dividend Yield", "Dividend Ex Date", "Dividend Pay Date"]
 
-    if view_mode == "Big Dave":
-        view_cols = base_cols + div_cols
-    else:
-        view_cols = base_cols
-
-    # Ensure columns exist
-    for c in view_cols:
-        if c not in df_full.columns:
-            df_full[c] = None
-
-    display_df = df_full[view_cols]
+    desired_cols = base_cols + (div_cols if view_mode == "Big Dave" else [])
+    present_cols = [c for c in desired_cols if c in df_full.columns]
+    # Fallback: if none matched (unexpected), show all available columns
+    display_df = df_full[present_cols] if present_cols else df_full
 
     # Persist results for reuse across reruns (sorting/selection)
     st.session_state["results_df"] = display_df.copy()
@@ -543,9 +528,11 @@ if st.session_state.get("results_df") is not None:
     st.subheader("Select rows to add to watchlist")
 
     def make_row_id(row: pd.Series) -> str:
+        # Use new column names; fall back to legacy if needed
+        strike_val = row.get("Strike", row.get("strike", ""))
         return "|".join([
             str(row.get("ticker", "")),
-            str(row.get("strike", "")),
+            str(strike_val),
             scan_type,
             requested_date_iso,
         ])
@@ -578,7 +565,7 @@ if st.session_state.get("results_df") is not None:
         except Exception:
             pass
 
-    edited = st.data_editor(
+        edited = st.data_editor(
         selectable_render,
         hide_index=True,
         use_container_width=True,
@@ -587,7 +574,7 @@ if st.session_state.get("results_df") is not None:
             "F": st.column_config.LinkColumn(label="F", help="Open on Finviz", display_text="🔎"),
             "Hub": st.column_config.LinkColumn(label="Hub", help="Open on Earnings Hub", display_text="🗓️"),
         },
-        disabled=[c for c in selectable.columns if c != "Select"],
+            disabled=[c for c in selectable_render.columns if c != "Select"],
         key="watchlist_selector",
     )
 
@@ -626,7 +613,9 @@ if st.session_state.get("results_df") is not None:
                 except Exception:
                     existing = pd.DataFrame(columns=list(to_save.columns))
                 combined = pd.concat([existing, to_save], ignore_index=True)
-                keys = [k for k in ["ticker", "strike", "scan_type", "target_exp"] if k in combined.columns]
+                # Dedupe by ticker + Strike (new) while supporting legacy 'strike'
+                strike_key = "Strike" if "Strike" in combined.columns else ("strike" if "strike" in combined.columns else None)
+                keys = [k for k in ["ticker", strike_key, "scan_type", "target_exp"] if k]
                 if keys:
                     combined = combined.drop_duplicates(subset=keys, keep="first")
                 try:
