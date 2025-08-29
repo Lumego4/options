@@ -38,6 +38,16 @@ st.set_page_config(
     layout="wide",
 )
 
+# Configurable Earnings Hub URL template (override via st.secrets if desired)
+EARNINGS_HUB_URL_TMPL = None
+try:
+    EARNINGS_HUB_URL_TMPL = st.secrets.get(
+        "EARNINGS_HUB_URL_TMPL",
+        "https://www.earningswhispers.com/stocks/{ticker}",
+    )
+except Exception:
+    EARNINGS_HUB_URL_TMPL = "https://earningshub.com/quote/TSLA{ticker}"
+
 
 # --------------------------- Math / Greeks ---------------------------
 
@@ -333,8 +343,11 @@ with st.sidebar:
 
     # View mode at bottom
     st.divider()
-    view_mode = st.radio("View mode", ["Big Dave", "Luke"],
-                         help="Big Dave includes dividend info; Luke hides it. Both include Market Cap.")
+    view_mode = st.radio(
+        "View mode",
+        ["Big Dave", "Luke"],
+        index=1,  # default to Luke
+        help="Big Dave includes dividend info; Luke hides it. Both include Market Cap.")
 
     # Run control at bottom
     run_btn_bottom = st.button("Run Scan 🚀", type="primary", use_container_width=True, key="run_bottom")
@@ -483,11 +496,34 @@ if st.session_state.get("results_df") is not None:
 
     # 1) Results (sortable, read-only)
     st.subheader("Results")
+    # Render-only: add link emoji columns after ticker
+    render_df = display_df.copy()
+    if "ticker" in render_df.columns:
+        try:
+            tick_up = render_df["ticker"].astype(str).str.upper()
+            render_df["F"] = tick_up.map(lambda t: f"https://finviz.com/quote.ashx?t={t}")
+            render_df["Hub"] = tick_up.map(lambda t: EARNINGS_HUB_URL_TMPL.format(ticker=t))
+            # Position F and Hub directly after ticker
+            cols = list(render_df.columns)
+            for c in ("F", "Hub"):
+                if c in cols:
+                    cols.remove(c)
+            if "ticker" in cols:
+                i = cols.index("ticker") + 1
+                cols = cols[:i] + ["F", "Hub"] + cols[i:]
+            render_df = render_df.reindex(columns=cols)
+        except Exception:
+            pass
+
     st.data_editor(
-        display_df,
+        render_df,
         hide_index=True,
         use_container_width=True,
         disabled=True,
+        column_config={
+            "F": st.column_config.LinkColumn(label="F", help="Open on Finviz", display_text="🔎"),
+            "Hub": st.column_config.LinkColumn(label="Hub", help="Open on Earnings Hub", display_text="🗓️"),
+        } if "ticker" in render_df.columns else None,
         key="results_table",
     )
 
@@ -521,12 +557,35 @@ if st.session_state.get("results_df") is not None:
     sel_ids = set(st.session_state.get("selected_row_ids", set()))
     selectable.insert(0, "Select", selectable.index.map(lambda rid: rid in sel_ids))
 
+    # Render-only: add F/Hub link emojis after ticker for selection view
+    selectable_render = selectable.drop(columns=["row_id"]).copy()
+    if "ticker" in selectable_render.columns:
+        try:
+            tick_up = selectable_render["ticker"].astype(str).str.upper()
+            selectable_render["F"] = tick_up.map(lambda t: f"https://finviz.com/quote.ashx?t={t}")
+            selectable_render["Hub"] = tick_up.map(lambda t: EARNINGS_HUB_URL_TMPL.format(ticker=t))
+            cols = list(selectable_render.columns)
+            for c in ("F", "Hub"):
+                if c in cols:
+                    cols.remove(c)
+            if "ticker" in cols:
+                i = cols.index("ticker") + 1
+                cols = cols[:i] + ["F", "Hub"] + cols[i:]
+            # keep Select as first column
+            if "Select" in cols:
+                cols = ["Select"] + [c for c in cols if c != "Select"]
+            selectable_render = selectable_render.reindex(columns=cols)
+        except Exception:
+            pass
+
     edited = st.data_editor(
-        selectable.drop(columns=["row_id"]),
+        selectable_render,
         hide_index=True,
         use_container_width=True,
         column_config={
             "Select": st.column_config.CheckboxColumn(help="Check rows to add to the active watchlist"),
+            "F": st.column_config.LinkColumn(label="F", help="Open on Finviz", display_text="🔎"),
+            "Hub": st.column_config.LinkColumn(label="Hub", help="Open on Earnings Hub", display_text="🗓️"),
         },
         disabled=[c for c in selectable.columns if c != "Select"],
         key="watchlist_selector",
@@ -587,11 +646,31 @@ if st.session_state.get("results_df") is not None:
         if wl_path.exists():
             try:
                 wl_df = pd.read_csv(wl_path)
+                wl_render = wl_df.copy()
+                if "ticker" in wl_render.columns:
+                    try:
+                        tick_up = wl_render["ticker"].astype(str).str.upper()
+                        wl_render["F"] = tick_up.map(lambda t: f"https://finviz.com/quote.ashx?t={t}")
+                        wl_render["Hub"] = tick_up.map(lambda t: EARNINGS_HUB_URL_TMPL.format(ticker=t))
+                        cols = list(wl_render.columns)
+                        for c in ("F", "Hub"):
+                            if c in cols:
+                                cols.remove(c)
+                        if "ticker" in cols:
+                            i = cols.index("ticker") + 1
+                            cols = cols[:i] + ["F", "Hub"] + cols[i:]
+                            wl_render = wl_render.reindex(columns=cols)
+                    except Exception:
+                        pass
                 st.data_editor(
-                    wl_df,
+                    wl_render,
                     hide_index=True,
                     use_container_width=True,
                     disabled=True,
+                    column_config={
+                        "F": st.column_config.LinkColumn(label="F", help="Open on Finviz", display_text="🔎"),
+                        "Hub": st.column_config.LinkColumn(label="Hub", help="Open on Earnings Hub", display_text="🗓️"),
+                    },
                     key="watchlist_view",
                 )
                 dl_bytes = wl_df.to_csv(index=False).encode("utf-8")
