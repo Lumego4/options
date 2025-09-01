@@ -38,8 +38,8 @@ st.set_page_config(
     layout="wide",
 )
 
-# Configurable Earnings Hub URL template (override via st.secrets if desired)
-EARNINGS_HUB_URL_TMPL = "https://www.earningshub.com/symbol/{ticker}"
+# MarketWatch URL template for ticker pages
+MARKETWATCH_URL_TMPL = "https://www.marketwatch.com/investing/stock/{ticker}"
 
 
 # --------------------------- Math / Greeks ---------------------------
@@ -487,15 +487,15 @@ if st.session_state.get("results_df") is not None:
         try:
             tick_up = render_df["ticker"].astype(str).str.upper()
             render_df["F"] = tick_up.map(lambda t: f"https://finviz.com/quote.ashx?t={t}")
-            render_df["Hub"] = tick_up.map(lambda t: EARNINGS_HUB_URL_TMPL.format(ticker=t))
-            # Position F and Hub directly after ticker
+            render_df["MW"] = tick_up.map(lambda t: MARKETWATCH_URL_TMPL.format(ticker=t))
+            # Position F and MW directly after ticker
             cols = list(render_df.columns)
-            for c in ("F", "Hub"):
+            for c in ("F", "MW"):
                 if c in cols:
                     cols.remove(c)
             if "ticker" in cols:
                 i = cols.index("ticker") + 1
-                cols = cols[:i] + ["F", "Hub"] + cols[i:]
+                cols = cols[:i] + ["F", "MW"] + cols[i:]
             render_df = render_df.reindex(columns=cols)
         except Exception:
             pass
@@ -507,7 +507,7 @@ if st.session_state.get("results_df") is not None:
         disabled=True,
         column_config={
             "F": st.column_config.LinkColumn(label="F", help="Open on Finviz", display_text="🔎"),
-            "Hub": st.column_config.LinkColumn(label="Hub", help="Open on Earnings Hub", display_text="🗓️"),
+            "MW": st.column_config.LinkColumn(label="MW", help="Open on MarketWatch", display_text="�"),
         } if "ticker" in render_df.columns else None,
         key="results_table",
     )
@@ -544,20 +544,20 @@ if st.session_state.get("results_df") is not None:
     sel_ids = set(st.session_state.get("selected_row_ids", set()))
     selectable.insert(0, "Select", selectable.index.map(lambda rid: rid in sel_ids))
 
-    # Render-only: add F/Hub link emojis after ticker for selection view
+    # Render-only: add F/MW link emojis after ticker for selection view
     selectable_render = selectable.drop(columns=["row_id"]).copy()
     if "ticker" in selectable_render.columns:
         try:
             tick_up = selectable_render["ticker"].astype(str).str.upper()
             selectable_render["F"] = tick_up.map(lambda t: f"https://finviz.com/quote.ashx?t={t}")
-            selectable_render["Hub"] = tick_up.map(lambda t: EARNINGS_HUB_URL_TMPL.format(ticker=t))
+            selectable_render["MW"] = tick_up.map(lambda t: MARKETWATCH_URL_TMPL.format(ticker=t))
             cols = list(selectable_render.columns)
-            for c in ("F", "Hub"):
+            for c in ("F", "MW"):
                 if c in cols:
                     cols.remove(c)
             if "ticker" in cols:
                 i = cols.index("ticker") + 1
-                cols = cols[:i] + ["F", "Hub"] + cols[i:]
+                cols = cols[:i] + ["F", "MW"] + cols[i:]
             # keep Select as first column
             if "Select" in cols:
                 cols = ["Select"] + [c for c in cols if c != "Select"]
@@ -572,7 +572,7 @@ if st.session_state.get("results_df") is not None:
         column_config={
             "Select": st.column_config.CheckboxColumn(help="Check rows to add to the active watchlist"),
             "F": st.column_config.LinkColumn(label="F", help="Open on Finviz", display_text="🔎"),
-            "Hub": st.column_config.LinkColumn(label="Hub", help="Open on Earnings Hub", display_text="🗓️"),
+            "MW": st.column_config.LinkColumn(label="MW", help="Open on MarketWatch", display_text="�"),
         },
             disabled=[c for c in selectable_render.columns if c != "Select"],
         key="watchlist_selector",
@@ -640,14 +640,14 @@ if st.session_state.get("results_df") is not None:
                     try:
                         tick_up = wl_render["ticker"].astype(str).str.upper()
                         wl_render["F"] = tick_up.map(lambda t: f"https://finviz.com/quote.ashx?t={t}")
-                        wl_render["Hub"] = tick_up.map(lambda t: EARNINGS_HUB_URL_TMPL.format(ticker=t))
+                        wl_render["MW"] = tick_up.map(lambda t: MARKETWATCH_URL_TMPL.format(ticker=t))
                         cols = list(wl_render.columns)
-                        for c in ("F", "Hub"):
+                        for c in ("F", "MW"):
                             if c in cols:
                                 cols.remove(c)
                         if "ticker" in cols:
                             i = cols.index("ticker") + 1
-                            cols = cols[:i] + ["F", "Hub"] + cols[i:]
+                            cols = cols[:i] + ["F", "MW"] + cols[i:]
                             wl_render = wl_render.reindex(columns=cols)
                     except Exception:
                         pass
@@ -658,7 +658,7 @@ if st.session_state.get("results_df") is not None:
                     disabled=True,
                     column_config={
                         "F": st.column_config.LinkColumn(label="F", help="Open on Finviz", display_text="🔎"),
-                        "Hub": st.column_config.LinkColumn(label="Hub", help="Open on Earnings Hub", display_text="🗓️"),
+                        "MW": st.column_config.LinkColumn(label="MW", help="Open on MarketWatch", display_text="�"),
                     },
                     key="watchlist_view",
                 )
