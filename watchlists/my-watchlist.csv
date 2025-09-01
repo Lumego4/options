@@ -1,0 +1,3 @@
+ticker,market_cap,underlying_price,P/E,P/S,strike,premium_mid,Premium Ratio,delta,option_volume,Buffer Distance,Normalized Buffer Distance,impliedVolatility,custom-optimizer,EPS (TTM),last earnings date,Recommendation (buy/hold/sell),Rec. Fundamental,Rec. Technical,dividend_yield,Dividend ex date,dividend pay out date,scan_type,target_exp
+TSLA,$1066.20B,330.56,195.6,11.5,322.5,4.2,1.3,0.291,4074,12.3,3.81,0.456,31.36,1.69,,hold,sell,sell,,,,puts,2025-08-22
+CVS,$87.01B,68.6,19.1,0.23,64.0,0.06,0.09,0.258,97,4.7,7.34,0.441,55.54,3.59,,buy,hold,sell,3.88,2025-07-22,2025-08-01,puts,2025-08-22
